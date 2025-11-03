@@ -158,3 +158,99 @@ class CocoTiledDataset(Dataset):
     def next_item(self, block=True, timeout=None):
         """Retrieve next processed tile + annotations from queue."""
         return self.queue.get(block=block, timeout=timeout)
+
+
+import matplotlib.pyplot as plt
+import cv2
+import numpy as np
+
+def visualize_tile(tile_tensor, target, tile_index):
+    """Visualize one tile with bounding boxes."""
+    # Convert tensor [C,H,W] → [H,W,C]
+    img = tile_tensor.permute(1, 2, 0).numpy()
+    img = (img * 255).astype(np.uint8).copy()
+
+    boxes = target['boxes'].numpy()
+    labels = target['labels'].numpy()
+
+    # Draw boxes (unnormalize)
+    for i, (x_center, y_center, bw, bh) in enumerate(boxes):
+        x1 = int((x_center - bw / 2) * img.shape[1])
+        y1 = int((y_center - bh / 2) * img.shape[0])
+        x2 = int((x_center + bw / 2) * img.shape[1])
+        y2 = int((y_center + bh / 2) * img.shape[0])
+        color = (0, 255, 0)
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(img, str(labels[i]), (x1 + 3, y1 + 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+    print(boxes,labels)
+    # Show tile with annotations
+    plt.figure(figsize=(5, 5))
+    plt.title(f"Tile #{tile_index} with {len(boxes)} boxes")
+    plt.imshow(img)
+    plt.axis("off")
+    plt.show()
+
+
+
+def visualize_tiling_on_image(dataset, img_id):
+    """
+    Shows the original image with tile boundaries overlaid
+    and ground-truth boxes (before tiling).
+    """
+    import matplotlib.pyplot as plt
+    import cv2
+    import numpy as np
+
+    img_info = dataset.images[img_id]
+    img_path = os.path.join(dataset.img_dir, img_info['file_name'])
+    img = cv2.imread(img_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    h, w = img.shape[:2]
+    tile_size = dataset.tile_size
+    stride = dataset.stride
+
+    # Draw tile grid
+    for y in range(0, h, stride):
+        cv2.line(img, (0, y), (w, y), (255, 0, 0), 1)
+    for x in range(0, w, stride):
+        cv2.line(img, (x, 0), (x, h), (255, 0, 0), 1)
+
+    # Draw original annotation boxes (green)
+    anns = dataset.annotations.get(img_id, [])
+    for ann in anns:
+        bx, by, bw, bh = ann['bbox']
+        x1, y1 = int(bx), int(by)
+        x2, y2 = int(bx + bw), int(by + bh)
+        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.putText(img, str(ann['category_id']), (x1 + 5, y1 + 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+    plt.figure(figsize=(8, 8))
+    plt.title(f"Image {img_info['file_name']} with {len(anns)} boxes")
+    plt.imshow(img)
+    plt.axis("off")
+    plt.show()
+
+
+imgpath = 'C:\\Users\\owner\\Downloads\\Images'
+jsonpath = 'C:\\Users\\owner\\Downloads\\Annotations\\test.json'
+
+dataset = CocoTiledDataset(coco_json=jsonpath,img_dir=imgpath,tile_size=640,stride=640)
+img, target = dataset[0]
+print(img,target)
+
+
+# Test: visualize a few random tiles
+print(f"Total tiles: {len(dataset)}")
+
+for idx in range(1,8):
+    tile, target = dataset[idx]
+    print(f"Tile {idx}: {len(target['boxes'])} boxes")
+    visualize_tile(tile, target, idx)
+
+# Pick a random image id from the dataset
+# random_img_id = list(dataset.images.keys())[0]
+
+# visualize_tiling_on_image(dataset, random_img_id)
